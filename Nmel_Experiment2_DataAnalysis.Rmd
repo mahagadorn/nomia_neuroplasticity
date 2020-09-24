@@ -1,0 +1,857 @@
+---
+title: "Nomia melanderi (Experiment 2): analysis of social effects on neuroplasticity"
+author: "M.A. Hagadorn"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = TRUE,
+	background = "#F7F7F7",
+	highlight = TRUE)
+```
+
+\newpage
+\section{Load Required Packages}
+```{r packagesload, warning=FALSE, echo=FALSE, message=FALSE, include=FALSE}
+
+#Load Required Packages
+library(knitr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(Rmisc)#summarySE
+library(car) 
+library(stats) #t.test
+library(nortest)
+```
+
+```{r sessioninformation, echo=FALSE}
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
+```
+
+
+\section{Summary of the Data and What we Collected}
+The aims of this project are to examine neuroplasticity relative to social cues in *Nomia melanderi*.  Brains were collected during summer 2018 in Walla Walla, WA.  
+
+See methods and ESM for detailed dissection, imaging, and tracing methods. Confocal stacks were traced blind to treatment grouped. Structures traced independently include: left and right lateral and medial lips, left and right lateral and medial collar, left and right lateral and medial kenyon cells, left and right mushroom body lobes (including basal rings, peduncles, and alpha, beta, gamma lobes), and antennal lobes. Whole brain measurements were used to scale structures relative to total brain size. Every other slide (i.e. every 10 um) was traced.
+
+\section{Treatment Groups}
+In this analysis, 2 different treatment groups will be compared.
+```{r txtable, echo=FALSE}
+#library(knitr)
+tx <- c(20,21)
+description <- c("Solo", "Paired")
+SampleSize <- c(17,23)
+tx_table <- cbind(tx, description, SampleSize)
+colnms <- c("Treatment", "Description", "Sample Size")
+kable(tx_table, col.names = colnms, align=c('c', 'l', 'c'), caption = "Treatment code (tx number), description, and samples sizes per treatment.")
+```
+
+
+
+\section{Load in the Data}
+The data that is being loaded in is the raw data renamed ```data``` to avoid overwriting any of the original data.  Once loaded in, these data will be converted into proportions of whole brain volumes and contains measurements for the following brain structures: ```left_lateral_calyx, left_medial_calyx, left_lateral_kc, left_medial_kc, left_mblobe, left_al, right_lateral_calyx, right_medial_calyx, right_lateral_kc, right_medial_kc, right_mblobe, right_al, and wholebrain```.
+
+```{r loadindata, echo=FALSE}
+#Using setwd() you need to designate your respective file path; MAH file path excluded for privacy
+setwd() #designate file path
+
+data <- read.table("Experiment2_structurevolume.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+```
+
+
+\section{Sum Specific Structures}
+\subsection{Summing Across Bilateral Measurements}
+Before analyzing the data we need to sum across all bilateral measurements to get one value for each structure (i.e. ```left_lateral_lip + right_lateral_lip``` to get one value for the lateral lips.)
+
+The table below summarizes how the values were summed and their new naming code.
+\subsection{Record of what data are being summed}
+```{r collapsedtable, echo=FALSE}
+#library(knitr)
+sumstructures <- c("lips", "collars", "calyces","mushroom body lobes", "antennal lobes",  "kenyon cells", "neuropil")
+
+sumstructcode <- c("lips", "collar", "calyces", "mblobes", "als", "kcs", "neuropil")
+
+collapsed_structures <- c("left_lateral_lips  +  right_lateral_lips  +  left_medial_lips  +  right_medial_lips",
+"left_lateral_collar  +  right_lateral_collar  +  left_medial_collar  +  
+                                    right_medial_collar", "left_lateral_lips  +  right_lateral_lips  +  left_medial_lips  +  
+                                    right_medial_lips + left_lateral_collar  +  right_lateral_collar  +  left_medial_collar  +  
+                                    right_medial_collar", "left_mblobes  +  right_mblobes", "left_al  +  right_al", "left_lateral_kc  +  right_lateral_kc
+                                    left_medial_kc  +  right_medial_kc", "sum all neuropil for N:K")
+sum_data_table <- cbind(sumstructures, sumstructcode, collapsed_structures)
+colnms <- c("Summed Structures", "Name", "Individual Structures Collapsed")
+kable(sum_data_table, col.names = colnms, align=c('l', 'l', 'l'), caption = "Information for specific structures that were summed to make 'combined' structures")
+```
+
+\subsection{Summing the data}
+Below is an example of how data are summed across lateral and medial structures.
+```{example, eval=FALSE, echo=TRUE}
+lip <- apply(data[,c("left_lateral_lip","right_lateral_lip", "left_medial_lip", 
+                     "right_medial_lip")], 1, sum)
+```
+
+
+```{r sumthedata, echo=FALSE}
+#to sum the lateral and medial lips (left and right)
+lip <- apply(data[,c("left_lateral_lip","right_lateral_lip", "left_medial_lip", 
+                     "right_medial_lip")], 1, sum)
+
+#to sum the lateral and medial collars (left and right)
+collar <- apply(data[,c("left_lateral_collar","right_lateral_collar", "left_medial_collar", 
+                        "right_medial_collar")], 1, sum)
+#to sum the calyces (left and right lateral and medial lips and collars)
+calyces <- apply(data[,c("left_lateral_lip", "left_lateral_collar", "right_lateral_lip", 
+                             "right_lateral_collar", "left_medial_lip", "left_medial_collar", 
+                             "right_medial_lip", "right_medial_collar")], 1, sum)
+
+#to sum the mushroom body lobes (left and right)
+mblobes <- apply(data[,c("left_mblobe","right_mblobe")], 1, sum)
+
+#to sum the antennal lobes (left and right)
+als <- apply(data[,c("left_al","right_al")], 1, sum)
+
+#to sum the kenyon cells (left and right lateral and medial lips and collars)
+kcs <- apply(data[,c("left_lateral_kc", "left_medial_kc", "right_medial_kc", 
+                             "right_lateral_kc")], 1, sum)
+
+neuropil <- apply(data[,c("left_lateral_lip", "left_lateral_collar", "right_lateral_lip", 
+                             "right_lateral_collar", "left_medial_lip", "left_medial_collar", 
+                             "right_medial_lip", "right_medial_collar", "left_mblobe", 
+                             "right_mblobe")], 1, sum)
+
+
+
+#bind to create new dataframe containing these columns
+data_plussumdata <- cbind(data, lip, collar, calyces, mblobes, als, kcs, neuropil)
+``` 
+
+
+
+\section{Scale structure volumes relative to whole brain volumes}
+Here we recalculate structure volumes as a proportion of the whole brain volumetric measurements.
+
+\subsection{Make New Table: Containing Summed Structures}
+```{r mk_tableonlysummedstructures}
+#make a new table with only the factors and the data we want to take whole brain proportions of...
+sumdata <- data_plussumdata[,-c(6:21)]
+```
+
+\subsection{Scale as whole brain proportions}
+```{r relativetoWB}
+#calculate relative to wholebrain
+#using mutate we can add the calculated column directly to our dataframe
+
+#library(dplyr)
+sumdata <- mutate(sumdata, lip_relWB = lip/wholebrain) # lips
+sumdata <- mutate(sumdata, col_relWB = collar/wholebrain) # collar
+sumdata <- mutate(sumdata, calyces_relWB = calyces/wholebrain) # calyces
+sumdata <- mutate(sumdata, mblobes_relWB = mblobes/wholebrain) # mblobes
+sumdata <- mutate(sumdata, als_relWB = als/wholebrain) # als
+sumdata <- mutate(sumdata, kcs_relWB = kcs/wholebrain) # kcs
+sumdata <- mutate(sumdata, neuropil_relWB = neuropil/wholebrain) # neuropil
+sumdata <- mutate(sumdata, nk_relWB = neuropil_relWB/kcs_relWB) # N:K
+```
+
+
+```{r savepropdata, echo=FALSE}
+#This file will be used when making figures 
+write.csv(sumdata,"Nmel_socialbrain2018_structurevolume_proportiondata.csv")
+```
+
+
+\subsection{Make New Table: just the proportion data}
+```{r mk_propdata}
+#make a new table with only the factors whole brain proportion data
+propdata <- sumdata[,-c(6:13)]
+```
+
+
+
+
+\section{Assigning factors}
+```{r assign factors}
+propdata$tx <- factor(propdata$tx)
+propdata$code <- factor(propdata$code, levels=c("solo", "paired"))
+propdata$tracer <- factor(propdata$tracer)
+propdata$bed <- factor(propdata$bed)
+
+#All factors assigned appropriately
+print(str(propdata))
+```
+
+
+\section{Whole Brain t-Test}
+\subsection{t-test}
+To make sure that whole brain measurements were not significantly different between treatment groups, we used an t-Test to compare means between solo and paired bees.
+```{r wholebrain_analysis}
+tt_wb <- t.test(wholebrain ~ code, data = data, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_wb)
+
+tt_wb$statistic
+sprintf("%.10f", tt_wb$p.value)
+```
+
+
+\subsection{Verify Assumptions}
+```{r assumptions_wholebrain}
+qqPlot(data$wholebrain, "norm")
+
+#normality
+print(ad.test(data$wholebrain))
+
+#variance
+print(leveneTest(wholebrain~code, data=data))
+```
+
+
+
+
+\section{Data Anaylsis: T-tests comparing relative volumes of brain structures between solo and paired bees}
+
+\subsection{Cummulative Lips}
+\subsubsection{Summary Statistics}
+```{r meansum_lip, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "lip_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_lip, echo=FALSE}
+#Boxplot
+ggplot(propdata, aes(x=code, y=lip_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Lips") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.025,.07)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+```
+
+
+
+\subsubsection{T-test}
+```{r tt_lip}
+#model
+tt_lip <- t.test(lip_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_lip)
+
+tt_lip$statistic
+sprintf("%.10f", tt_lip$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_lip}
+qqPlot(propdata$lip_relWB, "norm")
+
+#normality
+print(ad.test(propdata$lip_relWB))
+
+#variance
+print(leveneTest(lip_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+\subsection{Cummulative Collars}
+\subsubsection{Summary Statistics}
+```{r meansum_col, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "col_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_col, echo=FALSE}
+#Boxplot
+ggplot(propdata, aes(x=code, y=col_relWB, fill=code)) +
+   geom_boxplot() +
+   scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+   ggtitle("Collar") +
+   scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.025,.05)) +
+   scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+   theme(text = element_text(color="black",size = 15),
+         axis.title = element_text(color="black"),
+         axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)),
+         axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+         axis.ticks.length = unit (.5,"cm"),
+         legend.position = 'none',
+         legend.background = element_blank(),
+         legend.title = element_blank(),
+         panel.background = element_rect(fill = "white"),
+         panel.border = element_blank(),
+         panel.grid.major = element_blank(),
+         panel.grid.minor = element_blank(),
+         axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+         plot.title = element_text(hjust=0.5))
+```
+
+
+
+\subsubsection{T-test}
+```{r tt_col}
+#model
+tt_col <- t.test(col_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_col)
+
+tt_col$statistic
+sprintf("%.10f", tt_col$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_col}
+qqPlot(propdata$col_relWB, "norm")
+
+#normality
+print(ad.test(propdata$col_relWB))
+
+#variance
+print(leveneTest(col_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+\subsection{Mushroom Body Lobes}
+\subsubsection{Summary Statistics}
+```{r meansum_mblobes, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "mblobes_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_mblobes, echo=FALSE}
+#Outliers, so need to determine what those are.
+is_outlier <- function(x){
+  return(x < quantile(x, 0.25)-1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
+
+#Makes a table to identify ID of outlier
+samples_propdata <- propdata[,-1]
+rownames(samples_propdata) <- propdata[,1]
+
+outlier_test_mblobe <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(mblobes_relWB), mblobes_relWB, as.numeric(NA)))
+
+outlier_test_mblobe$outlier[which(is.na(outlier_test_mblobe$is_outlier))] <- as.numeric(NA)
+
+
+
+##Boxplot
+ggplot(propdata, aes(x=code, y=mblobes_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Mushroom Body Lobes") +
+  annotate("text", x=2, y=0.073 ,label="H01.18075", size=3) +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.04,.08)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+
+```
+
+\subsubsection{Outlier}
+One samples, *H01.18075*, was identified as an outlier. After looking at notes on this sample, there is no reason to think this outlier is due to abnormalities, handling issues, dissection mistakes, or other issues. So, I am proceeding with the analysis without removing this sample.
+
+
+\subsubsection{T-test}
+```{r tt_mblobes}
+#model
+tt_mblobes <- t.test(mblobes_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_mblobes)
+
+tt_mblobes$statistic
+sprintf("%.10f", tt_mblobes$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_mblobes}
+qqPlot(propdata$mblobes_relWB, "norm")
+
+#normality
+print(ad.test(propdata$mblobes_relWB))
+
+#variance
+print(leveneTest(mblobes_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+\subsection{Calyces}
+\subsubsection{Summary Statistics}
+```{r meansum_calyces, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "calyces_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_calyces, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=calyces_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Calyces") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.06,.12)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{T-test}
+```{r tt_calyces}
+#model
+tt_calyces <- t.test(calyces_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_calyces)
+
+tt_calyces$statistic
+sprintf("%.10f", tt_calyces$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_calyces}
+qqPlot(propdata$calyces_relWB, "norm")
+
+#normality
+print(ad.test(propdata$calyces_relWB))
+
+#variance
+print(leveneTest(calyces_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+
+\subsection{Antennal Lobes}
+\subsubsection{Summary Statistics}
+```{r meansum_als, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "als_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_als, echo=FALSE}
+#Outliers, so need to determine what those are.
+###make row names samples
+outlier_test_als <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(als_relWB), als_relWB, as.numeric(NA)))
+
+outlier_test_als$outlier[which(is.na(outlier_test_als$is_outlier))] <- as.numeric(NA)
+
+
+##Boxplot
+ggplot(propdata, aes(x=code, y=als_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Antennal Lobes") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.02,.04)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  annotate("text", x=1, y=0.0382 ,label="A07.18003", size=3) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+
+```
+
+\subsubsection{Outlier}
+One samples, *A07.18003*, was identified as an outlier. After looking at notes on this sample, there is no reason to think this outlier is due to abnormalities, handling issues, dissection mistakes, or other issues. So, I am proceeding with the analysis without removing this sample.
+
+
+\subsubsection{T-test}
+```{r tt_als}
+#model
+tt_als <- t.test(als_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_als)
+
+tt_als$statistic
+sprintf("%.10f", tt_als$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_als}
+qqPlot(propdata$als_relWB, "norm")
+
+#normality
+print(ad.test(propdata$als_relWB))
+
+#variance
+print(leveneTest(als_relWB~code, data=propdata))
+```
+
+Normality: qqplot suggests it might be slightly off normal, but the tests aren't violated. So, this one might need to be adjusted.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+
+
+\subsection{Neuropil}
+\subsubsection{Summary Statistics}
+```{r meansum_neuropil, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "neuropil_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_neuropil, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=neuropil_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Neuropil") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.1,.2)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{T-test}
+```{r tt_neuropil}
+#model
+tt_neuropil <- t.test(neuropil_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_neuropil)
+
+tt_neuropil$statistic
+sprintf("%.10f", tt_neuropil$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_neuropil}
+qqPlot(propdata$neuropil_relWB, "norm")
+
+#normality
+print(ad.test(propdata$neuropil_relWB))
+
+#variance
+print(leveneTest(neuropil_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+
+\subsection{Kenyon Cells}
+\subsubsection{Summary Statistics}
+```{r meansum_kcs, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "kcs_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_kcs, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=kcs_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("Kenyon Cells") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.04,.08)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{T-test}
+```{r tt_kcs}
+#model
+tt_kcs <- t.test(kcs_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_kcs)
+
+tt_kcs$statistic
+sprintf("%.10f", tt_kcs$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_kcs}
+qqPlot(propdata$kcs_relWB, "norm")
+
+#normality
+print(ad.test(propdata$kcs_relWB))
+
+#variance
+print(leveneTest(kcs_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+\subsection{Neuropil:KC} 
+\subsubsection{Summary Statistics}
+```{r meansum_nk, echo=FALSE}
+#library(Rmisc)
+kable(summarySE(propdata,
+                          measurevar = "nk_relWB",
+                          groupvars = c("code")))
+```
+
+
+```{r bp_nk, echo=FALSE}
+#Boxplot
+ggplot(propdata, aes(x=code, y=nk_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("darkgoldenrod1", "cyan3")) +
+  ggtitle("N:K") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(2,3.25)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Solo", "Paired")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+
+\subsubsection{T-test}
+```{r tt_nk}
+#model
+tt_nk <- t.test(nk_relWB~code, data=propdata, 
+                     alternative=c("two.sided"), paired=FALSE, var.equal=TRUE)
+
+print(tt_nk)
+
+tt_nk$statistic
+sprintf("%.10f", tt_nk$p.value)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_nk}
+qqPlot(propdata$nk_relWB, "norm")
+
+#normality
+print(ad.test(propdata$nk_relWB))
+
+#variance
+print(leveneTest(nk_relWB~code, data=propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+\newpage
+\section{Summary Table of the Results}
+```{r summarizeallresults, echo=FALSE}
+structure <- c("Lips", "Collar", "Mushroom Body Lobes", "Antennal Lobes", "Calyces", "Neuropil","Kenyon Cells", "NK")
+
+solo_mean <- c(tt_lip$estimate[1], tt_col$estimate[1], tt_mblobes$estimate[1], 
+              tt_als$estimate[1], tt_calyces$estimate[1], tt_neuropil$estimate[1], tt_kcs$estimate[1], tt_nk$estimate[1])
+
+paired_mean <- c(tt_lip$estimate[2], tt_col$estimate[2],tt_mblobes$estimate[2], tt_als$estimate[2], tt_calyces$estimate[2],
+                 tt_neuropil$estimate[2], tt_kcs$estimate[2], tt_nk$estimate[2])
+  
+CI_lower <- c(tt_lip$conf.int[1], tt_col$conf.int[1], tt_mblobes$conf.int[1], tt_als$conf.int[1],tt_calyces$conf.int[1], 
+              tt_neuropil$estimate[1], tt_kcs$conf.int[1], tt_nk$conf.int[1])
+  
+CI_upper <- c(tt_lip$conf.int[2], tt_col$conf.int[2], tt_mblobes$conf.int[2], tt_als$conf.int[2], tt_calyces$conf.int[2], 
+              tt_neuropil$estimate[2], tt_kcs$conf.int[2], tt_nk$conf.int[2])
+
+p_value <-c(tt_lip$p.value, tt_col$p.value, tt_mblobes$p.value, tt_als$p.value, tt_calyces$p.value, 
+            tt_neuropil$p.value, tt_kcs$p.value, tt_nk$p.value)
+
+
+
+summary <-cbind(structure, signif(solo_mean, 3), signif(paired_mean, 3), signif(CI_lower, 3), signif(CI_upper, 3), signif(p_value,4))
+  
+
+kable(summary, row.names = FALSE, col.names = c("Structure", "Solo Mean", "Paired Mean", "Lower 95% CI", "Upper 95% CI", "p-Value"))
+```
+
+
+

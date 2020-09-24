@@ -1,0 +1,1174 @@
+---
+title: "Nomia melanderi (Experiment 1): age- and experience-related effects on neuroplasticity"
+author: "M.A. Hagadorn"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = TRUE,
+	background = "#F7F7F7",
+	highlight = TRUE)
+```
+
+
+```{r packagesload, warning=FALSE, echo=FALSE, message=FALSE, include=FALSE}
+
+#Load Required Packages
+library(knitr)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(Rmisc) #summarySE
+library(car)#Anova
+library(rcompanion) #plotNormalDensity
+library(stats) #lm
+library(nortest)
+library(multcomp) #boxcox, glht
+```
+
+```{r sessioninformation, echo=FALSE}
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
+```
+
+\newpage
+
+\section{Summary of the Data and What we Collected}
+The aim of this project is to examine age- and experience-related neuroplasticity in *Nomia melanderi*. Treatment groups include *newly emerged* (zero-day old), lab-reared (10 days old), and reproductively active, nesting (age unknown) bees. To assess age-related neuroplasticity, we will compare newly emerged and lab-reared bees. To assess experience-related neuroplasticity, we will compare lab-reared to nesting bees. Brains were collected during summer 2016 in Walla Walla, WA.  
+
+See methods and ESM for rearing, dissections, and imaging specifics. Confocal stacks were traced blind to treatment grouped. Structures traced independently include: left and right lateral and medial lips, left and right lateral and medial collar, left and right lateral and medial kenyon cells, left and right mushroom body lobes (including basal rings, peduncles, and alpha, beta, gamma lobes), antennal lobes, and the centralcomplex. Whole brain measurements were used to scale structures relative to total brain size. Traces were made every slided (i.e. every 5 um).
+
+
+\subsection{Treatment Groups}
+In this analysis, 3 different treatment groups will be compared.
+```{r txtable, echo=FALSE}
+#library(knitr)
+description <- c("Newly Emerged", "Lab Reared", "Nesting")
+SampleSize <- c(7,7,7)
+tx_table <- cbind(description, SampleSize)
+colnms <- c("Description", "Sample Size")
+kable(tx_table, col.names = colnms, align=c('l', 'c'), caption = "Treatment group and corresponding samples sizes.")
+```
+
+
+
+\section{Load in the Data}
+The data being loaded in is the raw data renamed ```XXXX``` to avoid overwriting any of the original data.  Once loaded in, these data will be converted into proportions of whole brain volumes and contains measurements for the following brain structures: ```centralcomplex, left_lateral_calyx, left_medial_calyx, left_lateral_kc, left_medial_kc, left_mblobe, left_al, right_lateral_calyx, right_medial_calyx, right_lateral_kc, right_medial_kc, right_mblobe, right_al, and wholebrain```.
+
+```{r loadindata, echo=FALSE}
+#Using setwd() you need to designate your respective file path; MAH file path excluded for privacy
+setwd() #designate file path
+
+data <- read.table("Experiment1_structurevolume.csv", header = TRUE, sep = ",", stringsAsFactors = FALSE)
+data <- data[1:23, 1:22]
+```
+
+\section{Remove TX2 Samples}
+Our lab-reared bees consists of two collapsed treatment groups : tx 2 and tx3. TX two were lab-reared bees that were housed with alfalfa. Tx3 bees, however, were housed without alfalfa.
+
+TX2: sugar water + pollen + alfalfa flowers
+<br />
+
+TX3: sugar water + pollen WITHOUT alfalfa flowers.
+
+Since alfala presence could be a confounding factor, we removed all treatment two bees.
+
+```{r removetx2, echo=FALSE}
+#removes tx2 samples
+data <- data[-c(1,3),] 
+```
+
+
+
+\section{Sum Specific Structures}
+\subsection{Summing Across Bilateral Measurements}
+Before analyzing the data we need to sum across all bilateral measurements to get one value for each structure (i.e. ```left_lateral_lip + right_lateral_lip``` to get one value for the lateral lips.)
+
+The table below summarizes how the values were summed and their new naming code.
+##Record of what data are being summed
+```{r collapsedtable, echo=FALSE}
+#library(knitr)
+sumstructures <- c("central complex","lips", "collars", "calyces","mushroom body lobes", "antennal lobes",  "kenyon cells", "neuropil")
+
+sumstructcode <- c("cc", "lips", "collar", "calyces", "mblobes", "als", "kcs", "neuropil")
+
+collapsed_structures <- c("central complex", "left_lateral_lips  +  right_lateral_lips  +  left_medial_lips  +  right_medial_lips",
+"left_lateral_collar  +  right_lateral_collar  +  left_medial_collar  +  
+                                    right_medial_collar", "left_lateral_lips  +  right_lateral_lips  +  left_medial_lips  +  right_medial_lips + left_lateral_collar  +  right_lateral_collar  +  left_medial_collar  +  
+                                    right_medial_collar", "left_mblobes  +  right_mblobes", "left_al  +  right_al", "left_lateral_kc  +  right_lateral_kc
+                                    left_medial_kc  +  right_medial_kc", "sum all neuropil for N:K")
+sum_data_table <- cbind(sumstructures, sumstructcode, collapsed_structures)
+colnms <- c("Summed Structures", "Name", "Individual Structures Collapsed")
+kable(sum_data_table, col.names = colnms, align=c('l', 'l', 'l'), caption = "Information for specific structures that were summed to make 'combined' structures")
+```
+
+\subsection{Summing the data}
+In this section, we sum structures from the left and right side of the brain to get a value for each structure. For instance, if we want to get a measurement for the lips, we would sum across both medial and lateral lips from the left and right side of the brain (see Table 2 for details on summed structures.)
+
+Below is an example of how these summed values were obtained in R.
+```{r sumdataexample}
+#Example Code
+
+#lip <- apply(data[,c("left_lateral_lip","right_lateral_lip", "left_medial_lip", 
+#                     "right_medial_lip")], 1, sum)
+```
+
+```{r sumthedata, echo=FALSE}
+#to sum the lateral and medial lips (left and right)
+lip <- apply(data[,c("left_lateral_lip","right_lateral_lip", "left_medial_lip", 
+                     "right_medial_lip")], 1, sum)
+
+#to sum the lateral and medial collar (left and right)
+collar <- apply(data[,c("left_lateral_collar","right_lateral_collar", "left_medial_collar", 
+                        "right_medial_collar")], 1, sum)
+
+#to sum the calyces (left and right lateral and medial lips and collars)
+calyces <- apply(data[,c("left_lateral_lip", "left_lateral_collar", "right_lateral_lip", 
+                             "right_lateral_collar", "left_medial_lip", "left_medial_collar", 
+                             "right_medial_lip", "right_medial_collar")], 1, sum)
+
+#to sum the mushroom body lobes (left and right)
+mblobes <- apply(data[,c("left_mblobe","right_mblobe")], 1, sum)
+
+#to sum the antennal lobes (left and right)
+als <- apply(data[,c("left_al","right_al")], 1, sum)
+
+#to sum the kenyon cells (left and right lateral and medial Kenyon cells)
+kcs <- apply(data[,c("left_lateral_kc", "left_medial_kc", "right_medial_kc", 
+                             "right_lateral_kc")], 1, sum)
+
+neuropil <- apply(data[,c("left_lateral_lip", "left_lateral_collar", "right_lateral_lip", 
+                             "right_lateral_collar", "left_medial_lip", "left_medial_collar", 
+                             "right_medial_lip", "right_medial_collar", "left_mblobe", 
+                             "right_mblobe")], 1, sum)
+
+
+
+#bind to create new dataframe containing these columns
+data_plussumdata <- cbind(data, lip, collar, calyces, mblobes, als, kcs, neuropil)
+``` 
+
+
+
+\section{Scale structure volumes relative to whole brain volumes}
+Here we recalculate structure volumes as a proportion of the whole brain volumetric measurements.
+
+\subsection{Make New Table: Containing Summed Structures}
+```{r mk_tableonlysummedstructures}
+#make a new table with only the factors and the data we want to take whole brain proportions of...
+sumdata <- data_plussumdata[,-c(6:21)]
+```
+
+\subsection{Scale as whole brain proportions}
+Below is example code for how structures were calculated as a proportion of the whole brain.
+```{r examplecodewholebrain, echo=TRUE, eval=FALSE}
+#calculate relative to wholebrain
+#using mutate we can add the calculated column to our dataframe
+
+sumdata <- mutate(sumdata, cc_relWB = centralcomplex/wholebrain) # central complex
+```
+
+
+
+```{r relativetoWB, echo=FALSE}
+#calculate relative to wholebrain
+#using mutate we can add the calculated column directly to our dataframe
+
+#library(dplyr)
+sumdata <- mutate(sumdata, cc_relWB = centralcomplex/wholebrain) # central complex
+sumdata <- mutate(sumdata, lip_relWB = lip/wholebrain) # lips
+sumdata <- mutate(sumdata, col_relWB = collar/wholebrain) # collar
+sumdata <- mutate(sumdata, calyces_relWB = calyces/wholebrain) # calyces
+sumdata <- mutate(sumdata, mblobes_relWB = mblobes/wholebrain) # mblobes
+sumdata <- mutate(sumdata, als_relWB = als/wholebrain) # als
+sumdata <- mutate(sumdata, kcs_relWB = kcs/wholebrain) # kcs
+sumdata <- mutate(sumdata, neuropil_relWB = neuropil/wholebrain) # neuropil
+sumdata <- mutate(sumdata, nk_relWB = neuropil_relWB/kcs_relWB) # N:K
+```
+
+
+```{r savepropdata, echo=FALSE}
+#This file will be used when making figures 
+write.csv(sumdata,"Nmel_NELrRep2016_structurevolume_proportiondata.csv")
+```
+
+
+
+```{r mk_propdata, echo=FALSE}
+##Make New Table: just the proportion data
+
+#make a new table with only the factors whole brain proportion data
+propdata <- sumdata[,-c(5:13)]
+```
+
+
+
+
+\section{Assigning factors}
+```{r assign factors}
+propdata$code <- factor(propdata$code, levels=c("NewEmerge", "LabReared", "Nesting"))
+propdata$tracer <- factor(propdata$tracer)
+propdata$bed <- factor(propdata$bed)
+
+#All factors assigned appropriately
+print(str(propdata))
+```
+
+
+\subsection{Relevel the factors of the dataframe to assign 'newly emerged' as the base}
+Usinging ```relevel``` and ```ref``` we can make newly emerged bees the baseline for comparison.
+```{r relevelfactors}
+propdata <- within(propdata, code <-relevel(code, ref = "NewEmerge"))
+```
+
+
+
+
+
+\section{Whole Brain ANOVA}
+\subsection{Anova}
+
+To make sure that whole brain measurements were not significantly different between treatment groups, we used an ANOVA to compare means.
+```{r wholebrain_analysis}
+wholebrain_lm <- lm(data$wholebrain ~ code, data = data)
+print(summary(wholebrain_lm))
+
+#conduct anova
+anova_lm_wb <- Anova(wholebrain_lm)
+print(anova_lm_wb)
+```
+
+
+\subsection{Verify Assumptions}
+```{r assumptions_wholebrain}
+res.lmwb <- residuals(wholebrain_lm)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmwb)
+qqPlot(data$wholebrain, "norm")
+
+print(ad.test(data$wholebrain))
+
+
+#Homogeneity of variance
+#Ho: The distributions are the same.
+#Ha: The distributions are not the same.
+#aka if the p-value is <0.05 then you can conclude a lack of homogenetity of variance.
+print(leveneTest(wholebrain ~ code, data = data))
+```
+
+
+
+
+\section{Data Anaylsis: One-Way ANOVA comparing relative volumes of brain structures between Newly Emerged, Lab Reared, and Nesting bees}
+
+\subsection{Lips}
+\subsubsection{Summary Statistics}
+```{r meansum_lips, echo=FALSE}
+#library(Rmisc)
+ss_lip_relWB <- summarySE(propdata,
+                          measurevar = "lip_relWB",
+                          groupvars = c("code"))
+kable(ss_lip_relWB)
+```
+
+
+```{r bp_lip, echo=FALSE}
+#function for identifying outliers
+is_outlier <- function(x){
+  return(x < quantile(x, 0.25)-1.5 * IQR(x) | x > quantile(x, 0.75) + 1.5 * IQR(x))
+}
+
+#Creates a seperate table that specifies the outliers unique identifier
+#With ID, go back and verify that outlier isn't due to methodological issues
+samples_propdata <- propdata[,-1]
+rownames(samples_propdata) <- propdata[,1]
+
+outlier_test_lip <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(lip_relWB), lip_relWB, as.numeric(NA)))
+
+outlier_test_lip$outlier[which(is.na(outlier_test_lip$is_outlier))] <- as.numeric(NA)
+
+#Boxplot
+ggplot(propdata, aes(x=code, y=lip_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Lips") +
+  annotate("text", x=1, y=0.043 ,label="A12.21", size=3) +
+  annotate("text", x=1, y=0.031 ,label="A12.23", size=3) +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.03,.07)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+```
+
+
+\subsubsection{ANOVA}
+```{r anova_lip}
+#model
+lm_lip <- lm(propdata$lip_relWB ~ code, data = propdata)
+print(summary(lm_lip))
+
+#conduct Anova
+anova_lm_lip <- Anova(lm_lip)
+print(anova_lm_lip)
+```
+
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_lip, echo=FALSE}
+res.lmlip <- residuals(lm_lip)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmlip)
+qqPlot(propdata$lip_relWB, "norm")
+
+#Anderson Darling test for normality
+#Ho: The residuals are normally distributed
+#Ha: The residuals are not normally distributed
+#aka if the p-value is <0.05 then you can conclude that the data are not normally distributed
+print(ad.test(propdata$lip_relWB))
+
+
+#Homogeneity of variance
+#Ho: The distributions are the same.
+#Ha: The distributions are not the same.
+#aka if the p-value is <0.05 then you can conclude a lack of homogenetity of variance.
+print(leveneTest(lip_relWB~code, data = propdata))
+```
+
+
+
+Normality: Assumption Violated.
+<br />  
+Variance: Assumption met.
+
+
+
+\subsubsection{Assumptions Violated: Box-Cox Transformation}
+```{r BoxCoxlm_lip, echo=TRUE, eval=TRUE, fig.height=3.5}
+##Box-Cox Transformation
+bc_lip <- boxcox(lip_relWB ~ code, 
+                       data = propdata, lambda= seq(-26, 21, length=100), plotit = TRUE)
+
+#get lambda
+lambda_lip <- bc_lip$x
+#get log-likelyhood
+likelyhood_lip <- bc_lip$y
+
+bcresults_lip <- cbind(lambda_lip, likelyhood_lip)
+
+#sort these in decending order
+ord_bc_lip <-bcresults_lip[order(-likelyhood_lip),]
+
+#pull out maximum likelyhood and corresponding lambda
+max_lik_lip<- ord_bc_lip[1,]
+#lambda_toab2013 likelyhood_toab2013 
+
+new.lambda_lip <- ord_bc_lip[1,1]
+```
+Using the ```boxcox()``` function from the package ```MASS```, we determined that $\lambda$ =  `r new.lambda_lip`.
+
+<br />
+
+
+
+\subsubsection{Box-cox transformation model}
+```{r transformed_2013glmm}
+#boxcox model
+box_lm_lip <- lm((((propdata$lip_relWB ^ new.lambda_lip)-1)/new.lambda_lip) ~ code, 
+                          data = propdata)
+print(summary(box_lm_lip))
+
+#conduct anova
+anova_box_lip <- anova(box_lm_lip)
+anova_box_lip
+
+#get full for MS
+anova_box_lip$`F value`[1]
+sprintf("%.10f", anova_box_lip$`Pr(>F)`[1])
+```
+
+
+\subsubsection{Retest Assumptions}
+```{r transformed_assumptions, echo=FALSE}
+box.res.lm_lip <- residuals(box_lm_lip)
+par(mfrow=c(1,2))
+plotNormalDensity(box.res.lm_lip)
+qqPlot((((propdata$lip_relWB ^ new.lambda_lip)-1)/new.lambda_lip), "norm")
+
+#Anderson Darling test for normality
+print(ad.test(box.res.lm_lip))
+
+#Homogeneity of variance
+print(leveneTest((((propdata$lip_relWB ^ new.lambda_lip)-1)/new.lambda_lip) ~ code, 
+                          data = propdata))
+```
+
+
+
+\subsubsection{Post-hoc test}
+```{r posthoc_lip}
+box_lm_lip_posthoc <- glht(box_lm_lip, mcp(code="Tukey"))
+print(summary(box_lm_lip_posthoc))
+
+##Get letters for multiple comparisons
+box_lip.cld <- cld(box_lm_lip_posthoc, decreasing=FALSE)
+
+#list them
+box_lip.cld
+```
+
+
+
+
+
+\subsection{Collar}
+\subsubsection{Summary Statistics
+```{r meansum_cols, echo=FALSE}
+#library(Rmisc)
+ss_col_relWB <- summarySE(propdata,
+                          measurevar = "col_relWB",
+                          groupvars = c("code"))
+kable(ss_col_relWB)
+```
+
+
+```{r bp_col, echo=FALSE}
+#outlier
+samples_propdata <- propdata[,-1]
+rownames(samples_propdata) <- propdata[,1]
+
+outlier_test_col <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(col_relWB), col_relWB, as.numeric(NA)))
+
+outlier_test_col$outlier[which(is.na(outlier_test_col$is_outlier))] <- as.numeric(NA)
+
+
+#Boxplot
+ggplot(propdata, aes(x=code, y=col_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Collar") +
+  annotate("text", x=1, y=0.0205 ,label="H32.03", size=3) +
+  annotate("text", x=3, y=0.033 ,label="A1009", size=3) +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.01,.05)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+```
+
+\subsubsection{Outlier}
+Two samples, *H32.03* and *A1009*, were identified as outlier. After looking at notes on each sample, there is no reason to think these outliers are due to abnormalities, handling issues, dissection mistakes, or other issues. So, I am proceeding with the analysis without removing these samples.
+
+
+\subsubsection{ANOVA}
+```{r anova_col}
+#model
+lm_col <- lm(propdata$col_relWB ~ code, data = propdata)
+print(summary(lm_col))
+
+#conduct Anova
+anova_lm_col <- Anova(lm_col)
+print(anova_lm_col)
+
+anova_lm_col$`F value`[1]
+sprintf("%.10f", anova_lm_col$`Pr(>F)`[1])
+```
+
+\subsubsection{Post-hoc test}
+```{r posthoc_col}
+lm_col_posthoc <- glht(lm_col, mcp(code="Tukey"))
+print(summary(lm_col_posthoc))
+
+##Get letters for multiple comparisons
+col.cld <- cld(lm_col_posthoc, decreasing=FALSE)
+
+#list them
+col.cld
+#plot them
+opar <- par(mai=c(1,1,1.5,1))
+plot(col.cld)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_col, echo=FALSE}
+res.lmcol <- residuals(lm_col)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmcol)
+qqPlot(propdata$col_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$col_relWB))
+
+#Homogeneity of variance
+print(leveneTest(col_relWB~code, data = propdata))
+```
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+\subsection{Calyces}
+\subsubsection{Summary Statistics}
+```{r meansum_calyces, echo=FALSE}
+#library(Rmisc)
+ss_calyces_relWB <- summarySE(propdata,
+                          measurevar = "calyces_relWB",
+                          groupvars = c("code"))
+kable(ss_calyces_relWB)
+```
+
+
+```{r bp_calyces, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=calyces_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Calyces") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.05,.12)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{ANOVA}
+```{r anova_calyces}
+#model
+lm_calyces <- lm(propdata$calyces_relWB ~ code, data = propdata)
+print(summary(lm_calyces))
+
+#conduct Anova
+anova_lm_calyces <- Anova(lm_calyces)
+print(anova_lm_calyces)
+
+anova_lm_calyces$`F value`[1]
+sprintf("%.10f", anova_lm_calyces$`Pr(>F)`[1])
+```
+
+\subsubsection{Post-hoc test}
+```{r posthoc_calyces}
+lm_calyces_posthoc <- glht(lm_calyces, mcp(code="Tukey"))
+print(summary(lm_calyces_posthoc))
+
+##Get letters for multiple comparisons
+calyces.cld <- cld(lm_calyces_posthoc, decreasing=FALSE)
+
+#list them
+calyces.cld
+#plot them
+# opar <- par(mai=c(1,1,1.5,1))
+# plot(calyces.cld)
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_calyces, echo=FALSE}
+res.lmcalyces <- residuals(lm_calyces)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmcalyces)
+qqPlot(propdata$calyces_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$calyces_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(calyces_relWB~code, data = propdata))
+
+```
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+
+
+\subsection{Mushroom Body Lobes}
+\subsubsection{Summary Statistics}
+```{r meansum_mblobes, echo=FALSE}
+#library(Rmisc)
+ss_mblobes_relWB <- summarySE(propdata,
+                          measurevar = "mblobes_relWB",
+                          groupvars = c("code"))
+kable(ss_mblobes_relWB)
+```
+
+
+```{r bp_mblobes, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=mblobes_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Mushroom Body Lobes") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.04,.08)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+
+```
+
+
+
+\subsubsection{ANOVA}
+```{r anova_mblobes}
+#model
+lm_mblobes <- lm(propdata$mblobes_relWB ~ code, data = propdata)
+print(summary(lm_mblobes))
+
+#conduct Anova
+anova_lm_mblobes <- Anova(lm_mblobes)
+print(anova_lm_mblobes)
+
+anova_lm_mblobes$`F value`[1]
+sprintf("%.10f", anova_lm_mblobes$`Pr(>F)`[1])
+```
+
+\subsubsection{Post-hoc test}
+```{r posthoc_mblobes}
+lm_mblobes_posthoc <- glht(lm_mblobes, mcp(code="Tukey"))
+print(summary(lm_mblobes_posthoc))
+
+##Get letters for multiple comparisons
+mb.cld <- cld(lm_mblobes_posthoc, decreasing=FALSE)
+
+#list them
+mb.cld
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_mblobes, echo=FALSE}
+res.lmmblobes <- residuals(lm_mblobes)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmmblobes)
+qqPlot(propdata$mblobes_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$mblobes_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(mblobes_relWB~code, data = propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+\subsection{Antennal Lobes}
+\subsubsection{Summary Statistics}
+```{r meansum_als, echo=FALSE}
+#library(Rmisc)
+ss_als_relWB <- summarySE(propdata,
+                          measurevar = "als_relWB",
+                          groupvars = c("code"))
+kable(ss_als_relWB)
+```
+
+
+```{r bp_als, echo=FALSE}
+#outlier
+samples_propdata <- propdata[,-1]
+rownames(samples_propdata) <- propdata[,1]
+
+outlier_test_als <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(als_relWB), als_relWB, as.numeric(NA)))
+
+outlier_test_als$outlier[which(is.na(outlier_test_als$is_outlier))] <- as.numeric(NA)
+
+
+
+##Boxplot
+ggplot(propdata, aes(x=code, y=als_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Antennal Lobes") +
+  annotate("text", x=2, y=0.0425 ,label="H2.37", size=3) +
+  annotate("text", x=2, y=0.0325 ,label="B2.16", size=3) +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.03,.06)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5))
+```
+
+\subsubsection{Outlier}
+Two samples, *H2.37* and *B2.16*, were identified as outliers. After looking at notes there is no reason to think that these are outliers are due to abnormalities. 
+
+
+\subsubsection{ANOVA}
+```{r anova_als}
+#model
+lm_als <- lm(propdata$als_relWB ~ code, data = propdata)
+print(summary(lm_als))
+
+#conduct Anova
+anova_lm_als <- Anova(lm_als)
+print(anova_lm_als)
+
+anova_lm_als$`F value`[1]
+sprintf("%.10f", anova_lm_als$`Pr(>F)`[1])
+
+#No need for post-hocs
+```
+
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_als, echo=FALSE}
+res.lmals <- residuals(lm_als)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmals)
+qqPlot(propdata$als_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$als_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(als_relWB~code, data = propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+\subsection{Neuropil}
+\subsubsection{Summary Statistics}
+```{r meansum_neuropil, echo=FALSE}
+#library(Rmisc)
+ss_neuropil_relWB <- summarySE(propdata,
+                          measurevar = "neuropil_relWB",
+                          groupvars = c("code"))
+kable(ss_neuropil_relWB)
+```
+
+
+```{r bp_neuropil, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=neuropil_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Neuropil") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.1,0.2)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{ANOVA}
+```{r anova_neuropil}
+#model
+lm_neuropil <- lm(propdata$neuropil_relWB ~ code, data = propdata)
+print(summary(lm_neuropil))
+
+#conduct Anova
+anova_lm_neuropil <- Anova(lm_neuropil)
+print(anova_lm_neuropil)
+
+anova_lm_neuropil$`F value`[1]
+sprintf("%.10f", anova_lm_neuropil$`Pr(>F)`[1])
+```
+
+
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_neuropil, echo=FALSE}
+res.lmneuropil <- residuals(lm_neuropil)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmneuropil)
+qqPlot(propdata$neuropil_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$neuropil_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(neuropil_relWB~code, data = propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+\subsubsection{Post-hoc test}
+```{r posthoc_neuropil}
+lm_neuropil_posthoc <- glht(lm_neuropil, mcp(code="Tukey"))
+print(summary(lm_neuropil_posthoc))
+
+##Get letters for multiple comparisons
+neuropil.cld <- cld(lm_neuropil_posthoc, decreasing=FALSE)
+
+#list them
+neuropil.cld
+```
+
+
+
+
+
+
+\subsection{Kenyon Cells}
+\subsubsection{Summary Statistics}
+```{r meansum_kcs, echo=FALSE}
+#library(Rmisc)
+ss_kcs_relWB <- summarySE(propdata,
+                          measurevar = "kcs_relWB",
+                          groupvars = c("code"))
+kable(ss_kcs_relWB)
+```
+
+
+```{r bp_kcs, echo=FALSE}
+##Boxplot
+ggplot(propdata, aes(x=code, y=kcs_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Kenyon Cells") +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(0.03,.07)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+
+\subsubsection{ANOVA}
+```{r anova_kcs}
+#model
+lm_kcs <- lm(propdata$kcs_relWB ~ code, data = propdata)
+print(summary(lm_kcs))
+
+#conduct Anova
+anova_lm_kcs <- Anova(lm_kcs)
+print(anova_lm_kcs)
+
+anova_lm_kcs$`F value`[1]
+sprintf("%.10f", anova_lm_kcs$`Pr(>F)`[1])
+
+#NO POST-HOC NEEDED
+```
+
+
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_kcs, echo=FALSE}
+res.lmkcs <- residuals(lm_kcs)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmkcs)
+qqPlot(propdata$kcs_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$kcs_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(kcs_relWB~code, data = propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+
+\subsection{Neuropil to Kenyon Cell ratio (N:K)}
+\subsubsection{Summary Statistics}
+```{r meansum_nk, echo=FALSE}
+#library(Rmisc)
+ss_nk_relWB <- summarySE(propdata,
+                          measurevar = "nk_relWB",
+                          groupvars = c("code"))
+kable(ss_nk_relWB)
+```
+
+
+```{r bp_nk, echo=FALSE}
+#outlier
+samples_propdata <- propdata[,-1]
+rownames(samples_propdata) <- propdata[,1]
+
+outlier_test_nk <- samples_propdata %>% tibble::rownames_to_column(var="outlier") %>% group_by(code) %>% mutate(is_outlier=ifelse(is_outlier(nk_relWB), nk_relWB, as.numeric(NA)))
+
+outlier_test_nk$outlier[which(is.na(outlier_test_nk$is_outlier))] <- as.numeric(NA)
+
+
+##Boxplot
+ggplot(propdata, aes(x=code, y=nk_relWB, fill=code)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("gray","darkgoldenrod1", "cyan3")) +
+  ggtitle("Neuropil:Kenyon Cell", subtitle = "Lateral and Medial Lips + Collar") +
+  annotate("text", x=1, y=3.45 ,label="H29.08", size=3) +
+  annotate("text", x=3, y=4.3 ,label="B1012", size=3) +
+  scale_y_continuous(name = "Volume Relative to Whole Brain", limits = c(1.5,5.0)) +
+  scale_x_discrete(name = "Treatment Group", labels = c("Newly Emerged", "Lab Reared", "Nesting")) +
+  theme(text = element_text(color="black",size = 15),
+        axis.title = element_text(color="black"), 
+        axis.text.x = element_text(color="black", size = 15, margin = margin(t = 5, r =0, b = 20, l = 0)), 
+        axis.text.y = element_text(color="black", size = 15, margin = margin(t = 0, r =5, b = 0, l = 20)),
+        axis.ticks.length = unit (.5,"cm"),
+        legend.position = 'none', 
+        legend.background = element_blank(),
+        legend.title = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        panel.border = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.line = element_line(size = 1, linetype = "solid",colour = "black"),
+        plot.title = element_text(hjust=0.5),
+        plot.subtitle = element_text(hjust=0.5))
+```
+
+Two samples were identified as outliers. After looking at notes there is no reason to think that these are outliers are due to abnormalities. 
+
+\subsubsection{ANOVA}
+```{r anova_nk}
+lm_nk <- lm(propdata$nk_relWB ~ code, data = propdata)
+print(summary(lm_nk))
+
+#conduct Anova
+anova_lm_nk <- Anova(lm_nk)
+print(anova_lm_nk)
+
+anova_lm_nk$`F value`[1]
+sprintf("%.10f", anova_lm_nk$`Pr(>F)`[1])
+```
+
+\subsubsection{Post-hoc test}
+```{r posthoc_nk}
+lm_nk_posthoc <- glht(lm_nk, mcp(code="Tukey"))
+print(summary(lm_nk_posthoc))
+
+##Get letters for multiple comparisons
+nk.cld <- cld(lm_nk_posthoc, decreasing=FALSE)
+
+#list them
+nk.cld
+```
+
+\subsubsection{Verifying Assumptions}
+Checking for:
+<br />  
+1) The data are normally distributed
+<br />  
+2) Homogeneity of Variance
+
+```{r assumptions_nk, echo=FALSE}
+res.lmnk <- residuals(lm_nk)
+par(mfrow=c(1,2))
+plotNormalDensity(res.lmnk)
+qqPlot(propdata$nk_relWB, "norm")
+
+#Anderson Darling test for normality
+print(ad.test(propdata$nk_relWB))
+
+
+#Homogeneity of variance
+print(leveneTest(nk_relWB~code, data = propdata))
+```
+
+Normality: Assumption met.
+<br />  
+Variance: Assumption met.
+
+
+
+
+
+\newpage
+\section{Summary Table of the Results}
+```{r summarizeallresults, echo=FALSE}
+structure <- c("Lips", "Collar", "Total Calyces", "Mushroom Body Lobes", "Antennal Lobes", "Neuropil", "Kenyon Cells", "N:K")
+
+NE_mean <- c(ss_lip_relWB$lip_relWB[1], ss_col_relWB$col_relWB[1], 
+             ss_calyces_relWB$calyces_relWB[1], ss_mblobes_relWB$mblobes_relWB[1], 
+             ss_als_relWB$als_relWB[1], ss_neuropil_relWB$neuropil_relWB[1], ss_kcs_relWB$kcs_relWB[1], 
+             ss_nk_relWB$nk_relWB[1])
+
+LR_mean <- c(ss_lip_relWB$lip_relWB[2], ss_col_relWB$col_relWB[2], 
+             ss_calyces_relWB$calyces_relWB[2], ss_mblobes_relWB$mblobes_relWB[2], 
+             ss_als_relWB$als_relWB[2], ss_neuropil_relWB$neuropil_relWB[2], ss_kcs_relWB$kcs_relWB[2], 
+             ss_nk_relWB$nk_relWB[2])
+  
+Rep_mean <- c(ss_lip_relWB$lip_relWB[3], ss_col_relWB$col_relWB[3], 
+              ss_calyces_relWB$calyces_relWB[3], ss_mblobes_relWB$mblobes_relWB[3], 
+             ss_als_relWB$als_relWB[3], ss_neuropil_relWB$neuropil_relWB[3] ,ss_kcs_relWB$kcs_relWB[3], 
+             ss_nk_relWB$nk_relWB[3])
+  
+F_value <- c(anova_box_lip$`F value`[1], anova_lm_col$`F value`[1], anova_lm_calyces$`F value`[1], anova_lm_mblobes$`F value`[1], anova_lm_als$`F value`[1], 
+             anova_lm_neuropil$`F value`[1], anova_lm_kcs$`F value`[1], anova_lm_nk$`F value`[1])
+
+P_value <- c(anova_box_lip$`Pr(>F)`[1], anova_lm_col$`Pr(>F)`[1], anova_lm_calyces$`Pr(>F)`[1], 
+            anova_lm_mblobes$`Pr(>F)`[1], anova_lm_als$`Pr(>F)`[1], anova_lm_neuropil$`Pr(>F)`[1], 
+            anova_lm_kcs$`Pr(>F)`[1], anova_lm_nk$`Pr(>F)`[1])
+
+
+summary <-cbind(structure, signif(NE_mean, 3), signif(LR_mean, 3), signif(Rep_mean, 3), signif(F_value, 3), signif(P_value,4))
+  
+
+kable(summary, row.names = FALSE, col.names = c("Structure", "NE Mean", "LR Mean", "NS Mean", "F-Value", "p-Value"), width=12) #NR=Nesting Reproductive
+```
+
+
+
+\section{Post-hoc Summary for Structures with Significant Differences}
+```{r posthocsummary, echo=FALSE}
+structure <- c("Lips", "Collar","Calyces", "Mushroom Body Lobes", "Neuropil","N:K")
+
+
+LRtoNE<- c("=","=", "=", "=","=", "=")
+
+RtoNE<- c(">",">", ">", ">",">", ">")
+
+RtoLR<- c(">",">", ">", ">",">", ">")
+  
+posthoc_summary <-cbind(structure, LRtoNE, RtoNE, RtoLR)
+  
+
+kable(posthoc_summary, row.names = FALSE, col.names = c("Structure", "LR vs NE", "NS vs NE", "NS vs LR"), width=12, align=c('l', 'c', 'c', 'c') )
+```
+
+
