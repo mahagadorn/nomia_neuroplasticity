@@ -45,12 +45,11 @@ See methods and ESM for detailed dissection, imaging, and tracing methods. Confo
 In this analysis, 2 different treatment groups will be compared.
 ```{r txtable, echo=FALSE}
 #library(knitr)
-tx <- c(20,21)
 description <- c("Solo", "Paired")
 SampleSize <- c(17,23)
-tx_table <- cbind(tx, description, SampleSize)
-colnms <- c("Treatment", "Description", "Sample Size")
-kable(tx_table, col.names = colnms, align=c('c', 'l', 'c'), caption = "Treatment code (tx number), description, and samples sizes per treatment.")
+tx_table <- cbind(description, SampleSize)
+colnms <- c("Description", "Sample Size")
+kable(tx_table, col.names = colnms, align=c('c', 'l', 'c'), caption = "Treatment code description and samples sizes per treatment.")
 ```
 
 
@@ -176,7 +175,6 @@ propdata <- sumdata[,-c(6:13)]
 
 \section{Assigning factors}
 ```{r assign factors}
-propdata$tx <- factor(propdata$tx)
 propdata$code <- factor(propdata$code, levels=c("solo", "paired"))
 propdata$tracer <- factor(propdata$tracer)
 propdata$bed <- factor(propdata$bed)
