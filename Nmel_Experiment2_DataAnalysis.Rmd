@@ -138,7 +138,7 @@ Here we recalculate structure volumes as a proportion of the whole brain volumet
 \subsection{Make New Table: Containing Summed Structures}
 ```{r mk_tableonlysummedstructures}
 #make a new table with only the factors and the data we want to take whole brain proportions of...
-sumdata <- data_plussumdata[,-c(6:21)]
+sumdata <- data_plussumdata[,-c(5:20)]
 ```
 
 \subsection{Scale as whole brain proportions}
@@ -167,7 +167,7 @@ write.csv(sumdata,"Nmel_socialbrain2018_structurevolume_proportiondata.csv")
 \subsection{Make New Table: just the proportion data}
 ```{r mk_propdata}
 #make a new table with only the factors whole brain proportion data
-propdata <- sumdata[,-c(6:13)]
+propdata <- sumdata[,-c(6:12)]
 ```
 
 
